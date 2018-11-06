@@ -31,7 +31,6 @@ func goString(b []byte) string {
 	return ret.String()
 }
 
-// DELETE
 func onMessageReceived(msg []byte) []byte {
 	y, err := yaml.JSONToYAML([]byte(goString(msg)))
 	if err != nil {
@@ -111,7 +110,8 @@ func main() {
 		log.Fatalf("usage: %s INPUT", os.Args[0])
 	}
 
-	worker := v8.New(onMessageReceived)
+	ioHandler := &ioRecv{}
+	worker := v8.New(ioHandler.handleMsg)
 	filename := os.Args[1]
 	input, err := ioutil.ReadFile(filename)
 	if err != nil {

@@ -1,16 +1,11 @@
-function stringToArrayBuffer(s) {
-  const buf = new ArrayBuffer(s.length * 2);
-  const view = new Uint16Array(buf);
-  for (let i = 0, l = s.length; i < l; i ++) {
-    view[i] = s.charCodeAt(i);
-  }
-  return buf;
-}
+import { sendStringRequest } from './io.js';
 
 function write(value) {
-    const json = JSON.stringify(value);
-    const buf = stringToArrayBuffer(json);
-    V8Worker2.send(buf);
+  const json = JSON.stringify(value);
+  const answer = sendStringRequest('W', 'stdout', json);
+  if (answer !== undefined) {
+    throw new Error("did not get null from async write: "+answer.toString());
+  }
 }
 
 export default write;
