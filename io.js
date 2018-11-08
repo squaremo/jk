@@ -33,32 +33,66 @@ function writeString(uint16array, string, offset) {
   return offset + string.length;
 }
 
-// readString reads a string from offset to the end of an array
-function readString(uint16array, offset) {
-  return String.fromCharCode(null, ...uint16array.slice(offset))
+// decodeString reads a string from offset to the end of an array
+function decodeString(uint16array, offset) {
+  return String.fromCharCode(...uint16array.slice(offset))
 }
 
 function sendStringRequest(readOrWrite, kind, data) {
   const buf = new ArrayBuffer(4 + kind.length * 2 + data.length * 2);
   const view = new Uint16Array(buf);
   view[0] = readOrWrite.charCodeAt(0);
-  var offset = writeKind(view, kind, 1);
+  const offset = writeKind(view, kind, 1);
   writeString(view, data, offset);
   return decodeResult(V8Worker2.send(buf));
 }
 
+// decodeResult interprets the frames coming back from V8Worker2.send(...)
 function decodeResult(result) {
-  if (result !== null) {
+  if (result !== undefined) {
     const view = new Uint16Array(result);
     switch (String.fromCharCode(view[0])) {
     case 'S':
-      throw new Error('sequences not understood yet');
+      const data = new DataView(result, 2);
+      const serial = data.getUint32(0, true);
+      return {serial};
     case 'E':
-      errorStr = readString(view, 1)
-      return new Error(errorStr);
+      errorStr = decodeString(view, 1)
+      throw new Error(errorStr);
+    default:
+      throw new Error('unknown result: '+result);
     }
   }
   return result
 }
 
-export { sendStringRequest };
+// This keeps track of read requests that are expecting data.
+var outstanding = {};
+
+function resultAsPromise(result) {
+  return new Promise(function(resolve, reject) {
+    outstanding[result['serial']] = {data: resolve, error: reject};
+  })
+}
+
+// onData interprets frames sent by Go via worker.SendBytes(...)
+function onData(array) {
+  const view = new DataView(array);
+  const op = String.fromCharCode(view.getUint16(0, true));
+  switch (op) {
+  case 'D':
+    const serial = view.getUint32(2, true);
+    const resolver = outstanding[serial];
+    if (resolver !== undefined) {
+      delete outstanding[serial];
+      resolver['data'](array.slice(6));
+    }
+    break
+  default:
+    throw new Error('got unimplemented data frame: '+op);
+  }
+}
+
+V8Worker2.recv(onData);
+
+export { decodeString, sendStringRequest, resultAsPromise };

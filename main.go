@@ -112,6 +112,7 @@ func main() {
 
 	ioHandler := &ioRecv{}
 	worker := v8.New(ioHandler.handleMsg)
+	ioHandler.worker = worker // FIXME ugly
 	filename := os.Args[1]
 	input, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -122,4 +123,5 @@ func main() {
 	if err := worker.LoadModule(path.Base(filename), string(input), resolver.resolveModule); err != nil {
 		log.Fatalf("error: %v", err)
 	}
+	ioHandler.waitForIO()
 }

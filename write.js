@@ -1,11 +1,15 @@
-import { sendStringRequest } from './io.js';
+import { sendStringRequest } from 'io.js';
 
-function write(value) {
+function writeJSON(value) {
   const json = JSON.stringify(value);
-  const answer = sendStringRequest('W', 'stdout', json);
+  return writeString(json);
+}
+
+function writeString(value) {
+  const answer = sendStringRequest('W', 'stdout', value);
   if (answer !== undefined) {
     throw new Error("did not get null from async write: "+answer.toString());
   }
 }
 
-export default write;
+export { writeJSON, writeString };

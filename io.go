@@ -1,6 +1,10 @@
 package main
 
 import (
+	"sync"
+	"time"
+
+	v8 "github.com/ry/v8worker2"
 	"golang.org/x/text/encoding/unicode"
 )
 
@@ -78,28 +82,54 @@ const (
 // ioRecv is a receiver for V8Worker2.Worker that speaks the IO
 // protocol detailed above.
 type ioRecv struct {
+	worker *v8.Worker
+
+	serialMu sync.Mutex
+	serial   uint32
+
+	outstandingReqs sync.WaitGroup
 }
 
 // handleMsg is a bound method that you can hand to v8worker2.New
-func (*ioRecv) handleMsg(req []byte) []byte {
+func (r *ioRecv) handleMsg(req []byte) []byte {
 	var bigEndian bool
-	kind := req[0]
+	op := req[0]
 	// The first 16 bits are an ASCII character, so 0x00nn. On a
 	// big-endian computer, the first byte will be 0; on a
 	// little-endian computer, the second byte will be 0.
-	if kind == 0 {
+	if op == 0 {
 		bigEndian = true
-		kind = req[1]
+		op = req[1]
 	}
-	switch kind {
+	switch op {
 	case 'W':
-		kind, offset := decodeKind(req[2:], bigEndian) // ignore the kind for now, treat as print
+		_, offset := decodeKind(req[2:], bigEndian) // ignore the kind for now, treat as print
 		data := decodeStringData(req[offset+2:], bigEndian)
-		print(kind, ":", data)
+		print(data)
+	case 'R':
+		_, offset := decodeKind(req[2:], bigEndian) // ignore kind
+		decodeStringData(req[offset+2:], bigEndian) // ignore data even
+		r.serialMu.Lock()
+		serial := r.serial
+		r.serial += 1
+		r.serialMu.Unlock()
+		r.outstandingReqs.Add(1)
+		go func() {
+			time.Sleep(time.Second)
+			if err := r.worker.SendBytes(encodeData(serial, []byte{'h', 0, 'e', 0, 'l', 0, 'l', 0, 'o', 0}, bigEndian)); err != nil {
+				println("err:", err.Error()) // TODO panic?
+			}
+			r.outstandingReqs.Done()
+		}()
+		return encodeResponse('S', serial, bigEndian)
 	default:
-		panic("got something other than 'W'")
+		panic("got something other than 'W' or 'R'")
 	}
 	return nil
+}
+
+func (r *ioRecv) waitForIO() {
+	r.outstandingReqs.Wait()
 }
 
 // decodeKind decodes the length-prefixed string representing the kind
@@ -122,4 +152,22 @@ func decodeStringData(buf []byte, bigEndian bool) string {
 		panic(err)
 	}
 	return string(d)
+}
+
+func encodeResponse(op rune, serial uint32, bigEndian bool) []byte {
+	var b1, b2, b3, b4 byte = byte(serial >> 24), byte(serial >> 16), byte(serial >> 8), byte(serial)
+	if bigEndian {
+		return []byte{0, byte(op & 0xff), b1, b2, b3, b4}
+	} else {
+		return []byte{byte(op & 0xff), 0, b4, b3, b2, b1}
+	}
+}
+
+func encodeData(serial uint32, data []byte, bigEndian bool) []byte {
+	var b1, b2, b3, b4 byte = byte(serial >> 24), byte(serial >> 16), byte(serial >> 8), byte(serial)
+	if bigEndian {
+		return append([]byte{0, 'D', b1, b2, b3, b4}, data...)
+	} else {
+		return append([]byte{'D', 0, b4, b3, b2, b1}, data...)
+	}
 }
