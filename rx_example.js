@@ -1,4 +1,4 @@
 import { stringObservable } from 'rx.js'
 import { writeString } from 'write.js'
 
-stringObservable('whatever').forEach(writeString);
+stringObservable('whatever').forEach(s => writeString(s + '\n'));

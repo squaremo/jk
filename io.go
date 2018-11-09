@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -79,6 +80,8 @@ const (
 	Write ReadOrWrite = 'W'
 )
 
+const trace = false
+
 // ioRecv is a receiver for V8Worker2.Worker that speaks the IO
 // protocol detailed above.
 type ioRecv struct {
@@ -92,6 +95,9 @@ type ioRecv struct {
 
 // handleMsg is a bound method that you can hand to v8worker2.New
 func (r *ioRecv) handleMsg(req []byte) []byte {
+	if trace {
+		fmt.Printf("[TRACE] %#v\n", req)
+	}
 	var bigEndian bool
 	op := req[0]
 	// The first 16 bits are an ASCII character, so 0x00nn. On a
@@ -107,17 +113,26 @@ func (r *ioRecv) handleMsg(req []byte) []byte {
 		data := decodeStringData(req[offset+2:], bigEndian)
 		print(data)
 	case 'R':
-		_, offset := decodeKind(req[2:], bigEndian) // ignore kind
-		decodeStringData(req[offset+2:], bigEndian) // ignore data even
+		kind, offset := decodeKind(req[2:], bigEndian)
+		data := req[offset+2:]
 		r.serialMu.Lock()
 		serial := r.serial
 		r.serial += 1
 		r.serialMu.Unlock()
 		r.outstandingReqs.Add(1)
+		repeats := 1
+		if trace {
+			fmt.Printf("[TRACE] read: %q\n", kind)
+		}
+		if kind == "repeated" {
+			repeats = 5
+		}
 		go func() {
-			time.Sleep(time.Second)
-			if err := r.worker.SendBytes(encodeData(serial, []byte{'h', 0, 'e', 0, 'l', 0, 'l', 0, 'o', 0}, bigEndian)); err != nil {
-				println("err:", err.Error()) // TODO panic?
+			for i := 0; i < repeats; i++ {
+				time.Sleep(time.Second)
+				if err := r.worker.SendBytes(encodeData(serial, []byte(data), bigEndian)); err != nil {
+					println("err:", err.Error()) // TODO panic?
+				}
 			}
 			r.outstandingReqs.Done()
 		}()
@@ -142,7 +157,7 @@ func decodeKind(buf []byte, bigEndian bool) (string, int) {
 		len = int(buf[0]) + int(buf[1]<<8)
 	}
 	offset := len*2 + 2
-	return decodeStringData(buf[:offset], bigEndian), offset
+	return decodeStringData(buf[2:offset], bigEndian), offset
 }
 
 func decodeStringData(buf []byte, bigEndian bool) string {

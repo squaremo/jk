@@ -11,7 +11,7 @@ function resultAsObservable(result) {
 
 // TODO better name!
 function stringObservable(something) {
-  const s = resultAsObservable(sendStringRequest('R', 'stdin', something));
+  const s = resultAsObservable(sendStringRequest('R', 'repeated', something));
   return s.pipe(map(bytes => decodeString(new Uint16Array(bytes), 0)));
 }
 
