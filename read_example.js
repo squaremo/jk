@@ -1,4 +1,5 @@
 import { readString } from 'read.js';
+import { writeString } from 'write.js'
 
-V8Worker2.print("asking ...")
-readString("unimportant").then(V8Worker2.print);
+writeString("asking ...\n")
+readString("unimportant").then(s => writeString(s + '\n'));
