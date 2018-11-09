@@ -69,25 +69,36 @@ function decodeResult(result) {
 // This keeps track of read requests that are expecting data.
 var outstanding = {};
 
+function registerIOCallbacks(result, onData, onError) {
+  const { serial } = result;
+  outstanding[serial] = {data: onData, error: onError};
+}
+
 function resultAsPromise(result) {
+  const { serial } = result
   return new Promise(function(resolve, reject) {
-    outstanding[result['serial']] = {data: resolve, error: reject};
-  })
+    function removeThenCall(v) {
+      delete outstanding[serial]
+      return this(v);
+    }
+
+    registerIOCallbacks(result, removeThenCall.bind(resolve), removeThenCall.bind(reject))
+  });
 }
 
 // onData interprets frames sent by Go via worker.SendBytes(...)
 function onData(array) {
   const view = new DataView(array);
-  const op = String.fromCharCode(view.getUint16(0, true));
+  const op = String.fromCharCode(view.getUint16(0, true)); // FIXME true -> hardwired little endian
   switch (op) {
   case 'D':
-    const serial = view.getUint32(2, true);
-    const resolver = outstanding[serial];
-    if (resolver !== undefined) {
-      delete outstanding[serial];
-      resolver['data'](array.slice(6));
+    const serial = view.getUint32(2, true); // FIXME hardwired little endian
+    const { data } = outstanding[serial];
+    if (data !== undefined) {
+      data(array.slice(6));
     }
     break
+    // TODO 'Z' (EOF)
   default:
     throw new Error('got unimplemented data frame: '+op);
   }
@@ -95,4 +106,7 @@ function onData(array) {
 
 V8Worker2.recv(onData);
 
-export { decodeString, sendStringRequest, resultAsPromise };
+export { decodeString,
+         sendStringRequest,
+         resultAsPromise,
+         registerIOCallbacks };

@@ -59,7 +59,7 @@ DATA = *OCTET
 
 READ_RESPONSE = 'S' SERIAL / ERROR ; introduce sequence ID or error
 
-ERROR = 'E' DATA
+ERROR = 'E' *CHAR ; error message as string
 
 READ_DATA = 'D' SERIAL DATA / EOF ; continuation of sequence
 
