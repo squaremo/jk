@@ -5,7 +5,7 @@
   "main": "std.js",
   "scripts": {
     "lint": "eslint std*.js",
-    "build": "rollup -c | terser --mangle --module > build/std.js",
+    "build": "rollup -c | terser --source-map --mangle --module -o build/std.js",
     "test": "npm run lint"
   },
   "repository": {
